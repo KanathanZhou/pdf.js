@@ -201,7 +201,7 @@ class SignatureEditor extends DrawingEditor {
       );
     }
 
-    // TouchSign suppress copy logic for deserialization
+    // Dotti: suppress copy logic for deserialization
     // if (_isCopy) {
     //   this._isCopy = true;
     //   this._moveAfterPaste(baseX, baseY);
@@ -429,10 +429,7 @@ class SignatureEditor extends DrawingEditor {
       areContours: this.#isExtracted,
       color: [0, 0, 0],
       thickness: this.#isExtracted ? 0 : thickness,
-      pageIndex: this.pageIndex,
-      rect,
-      rotation: this.rotation,
-      structTreeParentId: this._structTreeParentId,
+      // Dotti
       signerId: this.signerId,
       signTimestamp: Date.now(),
       fieldName: crypto.randomUUID(),

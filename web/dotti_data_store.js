@@ -36,6 +36,9 @@ const DottiStore = {
   getSignerById(id) {
     return this.getSigners().find(s => s.id === id);
   },
+  getSignerBySortNum(sortNum) {
+    return this.getSigners().find(s => s.sortNum === sortNum);
+  },
   sameSigner(signerId) {
     const annotationSigner = this.getSignerById(signerId);
     if (annotationSigner.organizationId) {
@@ -253,9 +256,8 @@ const DottiStore = {
           // signContents can contain 2 things:
           // 1. just pure key and url for saving stamp image
           // 2. real annotation data
-          const editor = rsa.attr;
-          if (editor) {
-            const annotation = editor.annotation;
+          const annotation = rsa.attr?.annotation;
+          if (annotation) {
             if (annotation.pageIndex === layer.pageIndex) {
               layer.deserialize(annotation).then(deserializedEditor => {
                 if (!deserializedEditor) {
@@ -378,23 +380,17 @@ const DottiStore = {
         signatureEditorsSerialized.push(serialized);
       }
     }
-    this.submitSignatureTaskWithoutFacialRecognition(signatureEditorsSerialized);
+    this.submitSignatureTask(signatureEditorsSerialized);
+    // this.submitSignatureTaskWithoutFacialRecognition(
+    //   signatureEditorsSerialized
+    // );
   },
   submitSignatureTask(signatureAnnotations) {
     if (this.task) {
       const annotations = this.task.fileContents[0].attr.annotations;
       // find out this task is individual or entity
-      const entityAnnotations = annotations.filter(annotation => {
-        const correctSigner = this.getSignerById(annotation.signerId);
-        if (
-          correctSigner.organizationId &&
-          this.sameSortNum(annotation.signerId)
-        ) {
-          return true;
-        }
-        return false;
-      });
-      const isStampingTask = entityAnnotations.length > 0;
+      const correctSigner = this.getSignerBySortNum(this.task.sortNum);
+      const isStampingTask = !!correctSigner.organizationId;
 
       // Exclude all placeholders for this task
       const filteredAnnotations = annotations.filter(annotation => {
@@ -420,16 +416,17 @@ const DottiStore = {
         }
       }
       signatureAnnotations.forEach(sa => {
+        const relatedSigner = this.getSignerById(sa.signerId);
         mergedSignatureAnnotations.push({
           attr: {
             annotation: sa,
           },
           checksum: null,
           imgProcessArg: null,
-          key: sa.signer.organizationId ? sa.signer.email : null, // in org, email is the stamp image's key
+          key: relatedSigner.organizationId ? relatedSigner.sealKey : null, // in org, email is the stamp image's key
           signType: null,
-          url: sa.signer.organizationId
-            ? this.getSignImageURLByKey(sa.signer.email)
+          url: relatedSigner.organizationId
+            ? this.getSignImageURLBySignerId(relatedSigner.id)
             : null,
         });
       });
@@ -537,17 +534,8 @@ const DottiStore = {
     if (this.task) {
       const annotations = this.task.fileContents[0].attr.annotations;
       // find out this task is individual or entity
-      const entityAnnotations = annotations.filter(annotation => {
-        const correctSigner = this.getSignerById(annotation.signerId);
-        if (
-          correctSigner.organizationId &&
-          this.sameSortNum(annotation.signer)
-        ) {
-          return true;
-        }
-        return false;
-      });
-      const isStampingTask = entityAnnotations.length > 0;
+      const correctSigner = this.getSignerBySortNum(this.task.sortNum);
+      const isStampingTask = !!correctSigner.organizationId;
 
       // Exclude all placeholders for this task
       const filteredAnnotations = annotations.filter(annotation => {
@@ -573,16 +561,17 @@ const DottiStore = {
         }
       }
       signatureAnnotations.forEach(sa => {
+        const relatedSigner = this.getSignerById(sa.signerId);
         mergedSignatureAnnotations.push({
           attr: {
             annotation: sa,
           },
           checksum: null,
           imgProcessArg: null,
-          key: sa.signer.organizationId ? sa.signer.email : null, // in org, email is the stamp image's key
+          key: relatedSigner.organizationId ? relatedSigner.sealKey : null, // in org, email is the stamp image's key
           signType: null,
-          url: sa.signer.organizationId
-            ? this.getSignImageURLByKey(sa.signer.email)
+          url: relatedSigner.organizationId
+            ? this.getSignImageURLBySignerId(relatedSigner.id)
             : null,
         });
       });
