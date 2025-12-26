@@ -1,4 +1,4 @@
-/* eslint-disable no-alert */
+/* eslint-disable no-alert,prettier/prettier */
 const DottiStore = {
   token: null,
   profile: null,
@@ -36,6 +36,9 @@ const DottiStore = {
   getSignerById(id) {
     return this.getSigners().find(s => s.id === id);
   },
+  getSignerBySortNum(sortNum) {
+    return this.getSigners().find(s => s.sortNum === sortNum);
+  },
   sameSigner(signerId) {
     const annotationSigner = this.getSignerById(signerId);
     if (annotationSigner.organizationId) {
@@ -64,10 +67,6 @@ const DottiStore = {
   getResultFileContents() {
     const fileContents = this.getFileContents();
     return fileContents.find(fc => fc.type === "RESULT");
-  },
-  getSignImageURLByKey(key) {
-    const fileContents = this.getOriginalFileContents();
-    return fileContents.signContents.find(st => st.key === key)?.url ?? "";
   },
   getSignImageURLBySignerId(signerId) {
     const fileContents = this.getOriginalFileContents();
@@ -134,17 +133,13 @@ const DottiStore = {
       const validPermissions = orgPermissions.filter(op => {
         if (op.role === RoleType.CREATOR) {
           return true;
-        } else {
-          if (editorSigner.signChannelType === SignChannelType.HR) {
-            return op.role === RoleType.HR;
-          } else if (
-            editorSigner.signChannelType === SignChannelType.FINANCIAL
-          ) {
-            return op.role === RoleType.FINANCE;
-          } else {
-            return op.role === RoleType.LEGAL;
-          }
         }
+        if (editorSigner.signChannelType === SignChannelType.HR) {
+          return op.role === RoleType.HR;
+        } else if (editorSigner.signChannelType === SignChannelType.FINANCIAL) {
+          return op.role === RoleType.FINANCE;
+        }
+        return op.role === RoleType.LEGAL;
       });
       return validPermissions.length > 0;
     }
@@ -156,13 +151,13 @@ const DottiStore = {
       this.sameSigner(annotation.signerId) &&
       this.sameSortNum(annotation.signerId)
     ) {
-      if (annotation.placeholderType === "DateSigned") {
+      if (annotation.placeholderType === PLACEHOLDER_TYPE.DateSigned) {
         annotation.value = getMandarinDate();
-      } else if (annotation.placeholderType === "DateSignedYear") {
+      } else if (annotation.placeholderType === PLACEHOLDER_TYPE.DateSignedYear) {
         annotation.value = getYear();
-      } else if (annotation.placeholderType === "DateSignedMonth") {
+      } else if (annotation.placeholderType === PLACEHOLDER_TYPE.DateSignedMonth) {
         annotation.value = getMonth();
-      } else if (annotation.placeholderType === "DateSignedDay") {
+      } else if (annotation.placeholderType === PLACEHOLDER_TYPE.DateSignedDay) {
         annotation.value = getDay();
       }
     }
@@ -213,17 +208,35 @@ const DottiStore = {
           // 2. real annotation data
           const annotation = rsa.attr?.annotation;
           if (annotation) {
-            // Assign correct date to signer
-            if (this.isProcessingTask()) {
-              this.assignCorrectDate(annotation);
-            }
             if (annotation.pageIndex === layer.pageIndex) {
-              layer.deserialize(annotation).then(deserializedEditor => {
-                if (!deserializedEditor) {
-                  return;
+              if (
+                annotation.placeholderType === PLACEHOLDER_TYPE.DateSigned ||
+                annotation.placeholderType === PLACEHOLDER_TYPE.DateSignedYear ||
+                annotation.placeholderType === PLACEHOLDER_TYPE.DateSignedMonth ||
+                annotation.placeholderType === PLACEHOLDER_TYPE.DateSignedDay
+              ) {
+                // 如果是日期，则给他一个日期，且渲染
+                if (this.isProcessingTask()) {
+                  this.assignCorrectDate(annotation);
                 }
-                layer.add(deserializedEditor);
-              });
+                // 如果日期是null，说明这个对应的人还没签名/盖章，则不渲染
+                if (annotation.value !== "null") {
+                  layer.deserialize(annotation).then(deserializedEditor => {
+                    if (!deserializedEditor) {
+                      return;
+                    }
+                    layer.add(deserializedEditor);
+                  });
+                }
+              } else {
+                // 如果是签名/盖章，直接渲染
+                layer.deserialize(annotation).then(deserializedEditor => {
+                  if (!deserializedEditor) {
+                    return;
+                  }
+                  layer.add(deserializedEditor);
+                });
+              }
             }
           }
         }
@@ -253,16 +266,33 @@ const DottiStore = {
           // signContents can contain 2 things:
           // 1. just pure key and url for saving stamp image
           // 2. real annotation data
-          const editor = rsa.attr;
-          if (editor) {
-            const annotation = editor.annotation;
+          const annotation = rsa.attr?.annotation;
+          if (annotation) {
             if (annotation.pageIndex === layer.pageIndex) {
-              layer.deserialize(annotation).then(deserializedEditor => {
-                if (!deserializedEditor) {
-                  return;
+              if (
+                annotation.placeholderType === PLACEHOLDER_TYPE.DateSigned ||
+                annotation.placeholderType === PLACEHOLDER_TYPE.DateSignedYear ||
+                annotation.placeholderType === PLACEHOLDER_TYPE.DateSignedMonth ||
+                annotation.placeholderType === PLACEHOLDER_TYPE.DateSignedDay
+              ) {
+                // 如果日期是null，说明这个对应的人还没签名/盖章，则不渲染
+                if (annotation.value !== "null") {
+                  layer.deserialize(annotation).then(deserializedEditor => {
+                    if (!deserializedEditor) {
+                      return;
+                    }
+                    layer.add(deserializedEditor);
+                  });
                 }
-                layer.add(deserializedEditor);
-              });
+              } else {
+                // 如果是签名/盖章，直接渲染
+                layer.deserialize(annotation).then(deserializedEditor => {
+                  if (!deserializedEditor) {
+                    return;
+                  }
+                  layer.add(deserializedEditor);
+                });
+              }
             }
           }
         }
@@ -378,23 +408,17 @@ const DottiStore = {
         signatureEditorsSerialized.push(serialized);
       }
     }
-    this.submitSignatureTaskWithoutFacialRecognition(signatureEditorsSerialized);
+    this.submitSignatureTask(signatureEditorsSerialized);
+    // this.submitSignatureTaskWithoutFacialRecognition(
+    //   signatureEditorsSerialized
+    // );
   },
   submitSignatureTask(signatureAnnotations) {
     if (this.task) {
       const annotations = this.task.fileContents[0].attr.annotations;
       // find out this task is individual or entity
-      const entityAnnotations = annotations.filter(annotation => {
-        const correctSigner = this.getSignerById(annotation.signerId);
-        if (
-          correctSigner.organizationId &&
-          this.sameSortNum(annotation.signerId)
-        ) {
-          return true;
-        }
-        return false;
-      });
-      const isStampingTask = entityAnnotations.length > 0;
+      const correctSigner = this.getSignerBySortNum(this.task.sortNum);
+      const isStampingTask = !!correctSigner.organizationId;
 
       // Exclude all placeholders for this task
       const filteredAnnotations = annotations.filter(annotation => {
@@ -420,17 +444,16 @@ const DottiStore = {
         }
       }
       signatureAnnotations.forEach(sa => {
+        const relatedSigner = this.getSignerById(sa.signerId);
         mergedSignatureAnnotations.push({
           attr: {
             annotation: sa,
           },
           checksum: null,
           imgProcessArg: null,
-          key: sa.signer.organizationId ? sa.signer.email : null, // in org, email is the stamp image's key
+          key: relatedSigner.organizationId ? relatedSigner.sealKey : null, // in org, email is the stamp image's key
           signType: null,
-          url: sa.signer.organizationId
-            ? this.getSignImageURLByKey(sa.signer.email)
-            : null,
+          url: relatedSigner.organizationId ? this.getSignImageURLBySignerId(relatedSigner.id) : null,
         });
       });
       this.task.fileContents[0].signContents = mergedSignatureAnnotations;
@@ -537,17 +560,8 @@ const DottiStore = {
     if (this.task) {
       const annotations = this.task.fileContents[0].attr.annotations;
       // find out this task is individual or entity
-      const entityAnnotations = annotations.filter(annotation => {
-        const correctSigner = this.getSignerById(annotation.signerId);
-        if (
-          correctSigner.organizationId &&
-          this.sameSortNum(annotation.signer)
-        ) {
-          return true;
-        }
-        return false;
-      });
-      const isStampingTask = entityAnnotations.length > 0;
+      const correctSigner = this.getSignerBySortNum(this.task.sortNum);
+      const isStampingTask = !!correctSigner.organizationId;
 
       // Exclude all placeholders for this task
       const filteredAnnotations = annotations.filter(annotation => {
@@ -573,16 +587,17 @@ const DottiStore = {
         }
       }
       signatureAnnotations.forEach(sa => {
+        const relatedSigner = this.getSignerById(sa.signerId);
         mergedSignatureAnnotations.push({
           attr: {
             annotation: sa,
           },
           checksum: null,
           imgProcessArg: null,
-          key: sa.signer.organizationId ? sa.signer.email : null, // in org, email is the stamp image's key
+          key: relatedSigner.organizationId ? relatedSigner.sealKey : null, // in org, email is the stamp image's key
           signType: null,
-          url: sa.signer.organizationId
-            ? this.getSignImageURLByKey(sa.signer.email)
+          url: relatedSigner.organizationId
+            ? this.getSignImageURLBySignerId(relatedSigner.id)
             : null,
         });
       });
@@ -751,6 +766,29 @@ const RoleType = {
   LEGAL: "LEGAL",
   OBSERVER: "OBSERVER",
   SUPER_ADMIN: "SUPER_ADMIN",
+};
+
+const PLACEHOLDER_TYPE = {
+  Signature: 'Signature',
+  Initial: 'Initial',
+  ContractStamp: 'STAMP_CONTRACT',
+  FinancialStamp: 'STAMP_FINANCIAL',
+  HRStamp: 'STAMP_HR',
+  InvoiceStamp: 'STAMP_INVOICE', // 发票章
+  OfficialStamp: 'STAMP_OFFICIAL',
+  TaxStamp: 'STAMP_TAX', // 法人章
+  OtherStamp: 'STAMP_OTHER', // 法人章
+  DateSigned: 'DateSigned',
+  DateSignedYear: 'DateSignedYear',
+  DateSignedMonth: 'DateSignedMonth',
+  DateSignedDay: 'DateSignedDay',
+  FullName: 'FullName',
+  Email: 'Email',
+  Company: 'Company',
+  Title: 'Title',
+  ID: 'ID',
+  Mobile: 'Mobile',
+  TextInput: 'TextInput'
 };
 
 export default DottiStore;

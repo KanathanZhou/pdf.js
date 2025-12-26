@@ -49,6 +49,9 @@ class StampEditor extends AnnotationEditor {
 
   #hasBeenAddedInUndoStack = false;
 
+  // Dotti
+  #placeholderContent = null;
+
   isSignaturePlaceholder = false;
 
   isStampPlaceholder = false;
@@ -378,15 +381,15 @@ class StampEditor extends AnnotationEditor {
     this.div.hidden = true;
 
     if (this.isSignaturePlaceholder) {
-      const placeholderContent = document.createElement("div");
-      placeholderContent.className = "placeholder-content-sig";
-      placeholderContent.innerHTML = `<div>请您双击此处进行签名<span style="color: red;">*</span></div>`;
-      this.div.append(placeholderContent);
+      this.#placeholderContent = document.createElement("div");
+      this.#placeholderContent.className = "placeholder-content-sig";
+      this.#placeholderContent.innerHTML = `<div>请您双击此处进行签名<span style="color: red;">*</span></div>`;
+      this.div.append(this.#placeholderContent);
     } else if (this.isStampPlaceholder) {
-      const placeholderContent = document.createElement("div");
-      placeholderContent.className = "placeholder-content-seal";
-      placeholderContent.innerHTML = `<div>请您双击此处进行盖章<span style="color: red;">*</span></div>`;
-      this.div.append(placeholderContent);
+      this.#placeholderContent = document.createElement("div");
+      this.#placeholderContent.className = "placeholder-content-seal";
+      this.#placeholderContent.innerHTML = `<div>请您双击此处进行盖章<span style="color: red;">*</span></div>`;
+      this.div.append(this.#placeholderContent);
     }
 
     this.createAltText();
@@ -883,7 +886,7 @@ class StampEditor extends AnnotationEditor {
     const serialized = Object.assign(super.serialize(isForCopying), {
       bitmapId: this.#bitmapId,
       isSvg: this.#isSvg,
-      structTreeParentId: this._structTreeParentId,
+      // Dotti
       x: this.x,
       y: this.y,
       signerId: this.signerId,
@@ -1017,6 +1020,7 @@ class StampEditor extends AnnotationEditor {
       }
       // eslint-disable-next-line no-alert
       if (confirm("确定盖章吗")) {
+        this.#placeholderContent.remove();
         this.remove(false);
         this.#bitmapId = null;
         this.#bitmapUrl = window.DottiStore.getSignImageURLBySignerId(
